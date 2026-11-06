@@ -24,6 +24,7 @@ from advisor.segment import infer_segment
 from kyc import validate as kyc_validate, lookups
 from tracker import orders
 from propensity import score as propensity
+import analytics
 import demo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -316,6 +317,22 @@ async def kyc_upload(gst_certificate: Optional[UploadFile] = File(None),
 @app.post("/score")
 def score(req: ScoreReq):
     return propensity.score(req.lead)
+
+
+# ---------- O7 analytics (dashboard) ----------
+@app.get("/analytics/summary")
+def analytics_summary():
+    return analytics.summary()
+
+
+@app.get("/analytics/leads")
+def analytics_leads(limit: int = 50, band: Optional[str] = None):
+    return analytics.scored_leads(limit, band)
+
+
+@app.get("/analytics/retention")
+def analytics_retention():
+    return analytics.retention()
 
 
 # ---------- O8 privacy ----------
