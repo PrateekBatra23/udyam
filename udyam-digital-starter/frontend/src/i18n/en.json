@@ -1,0 +1,21 @@
+{
+  "app_title": "Accel Business",
+  "tagline": "Go digital in one sitting",
+  "nav_onboard": "Start",
+  "nav_advisor": "Advisor",
+  "nav_checkout": "Quote",
+  "nav_kyc": "KYC",
+  "nav_tracker": "Track",
+  "nav_backoffice": "Insights",
+  "gstin_label": "Enter your GSTIN to begin",
+  "gstin_cta": "Find my business",
+  "confirm_segment": "Does this sound right?",
+  "value_bundle": "Value",
+  "lite_bundle": "Lite",
+  "monthly": "per month",
+  "one_time": "one-time setup",
+  "savings_cheaper": "cheaper than you pay now",
+  "cheaper_option": "Show me a cheaper option",
+  "consent_title": "Before we verify your business",
+  "consent_accept": "I agree"
+}

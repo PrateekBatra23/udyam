@@ -1,0 +1,13 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pandas==2.2.2
+scikit-learn==1.5.1
+pytesseract==0.3.13
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+python-multipart==0.0.9
+anthropic==0.34.2
+psycopg2-binary==2.9.9
+# System dependency (not pip): Tesseract OCR engine
+#   Debian/Ubuntu: sudo apt-get install -y tesseract-ocr
+#   macOS:         brew install tesseract

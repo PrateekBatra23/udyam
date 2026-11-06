@@ -1,0 +1,21 @@
+{
+  "app_title": "Accel Business",
+  "tagline": "एक ही बार में डिजिटल बनें",
+  "nav_onboard": "शुरू करें",
+  "nav_advisor": "सलाहकार",
+  "nav_checkout": "कोटेशन",
+  "nav_kyc": "केवाईसी",
+  "nav_tracker": "ट्रैक",
+  "nav_backoffice": "इनसाइट्स",
+  "gstin_label": "शुरू करने के लिए अपना GSTIN दर्ज करें",
+  "gstin_cta": "मेरा व्यवसाय खोजें",
+  "confirm_segment": "क्या यह सही लगता है?",
+  "value_bundle": "वैल्यू",
+  "lite_bundle": "लाइट",
+  "monthly": "प्रति माह",
+  "one_time": "एकमुश्त सेटअप",
+  "savings_cheaper": "अभी आप जो भुगतान करते हैं उससे सस्ता",
+  "cheaper_option": "मुझे सस्ता विकल्प दिखाएं",
+  "consent_title": "आपके व्यवसाय को सत्यापित करने से पहले",
+  "consent_accept": "मैं सहमत हूँ"
+}
