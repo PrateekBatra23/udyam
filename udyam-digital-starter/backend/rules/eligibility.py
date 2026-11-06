@@ -113,3 +113,28 @@ def strip_ineligible(profile: Profile, bundle: list[str]) -> tuple[list[str], li
                 changed = True
                 break
     return cur, removed
+
+
+def blockers(profile: Profile, pid: str, bundle: list[str] | None = None) -> list[dict]:
+    """Structured reasons a product cannot be sold to this profile (empty list =
+    sellable). Used to explain refusals in plain language. `bundle` is the
+    context for dependency checks (None = ignore dependencies)."""
+    p = get_store().product(pid)
+    if p is None:
+        return [{"code": "unknown"}]
+    out = []
+    if profile.city_tier not in _tiers(p):
+        out.append({"code": "city_tier", "have": profile.city_tier,
+                    "need": sorted(_tiers(p))})
+    me = _int(p.get("min_employees"), 0)
+    if profile.employee_count < me:
+        out.append({"code": "employees", "have": profile.employee_count, "need": me})
+    ms = _int(p.get("min_sites"), 0)
+    if profile.num_sites < ms:
+        out.append({"code": "sites", "have": profile.num_sites, "need": ms})
+    if str(p.get("requires_gstin")).strip().upper() == "Y" and not profile.has_active_gstin:
+        out.append({"code": "gstin"})
+    dep = _requires_one_of(pid)
+    if bundle is not None and dep and not (set(bundle) & set(dep)):
+        out.append({"code": "dependency", "need": dep})
+    return out

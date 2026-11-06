@@ -15,8 +15,9 @@ import psycopg2
 from psycopg2.pool import SimpleConnectionPool
 from psycopg2.extras import RealDictCursor
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/udyam")
+import config
+
+DATABASE_URL = config.DATABASE_URL
 
 _POOL: SimpleConnectionPool | None = None
 
@@ -54,6 +55,10 @@ def init_db():
             expected_activation DATE NOT NULL,
             current_stage_index INTEGER NOT NULL DEFAULT 0
         )""")
+        for col in ("business_ref TEXT", "monthly_inr INTEGER", "one_time_inr INTEGER",
+                    "contract_months INTEGER", "lines JSONB", "kyc_status TEXT",
+                    "kyc_gstin_masked TEXT", "retention_until DATE"):
+            cur.execute(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {col}")
         cur.execute("""CREATE TABLE IF NOT EXISTS consent_receipts (
             receipt_id TEXT PRIMARY KEY,
             business_ref TEXT NOT NULL,

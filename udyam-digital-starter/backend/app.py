@@ -1,27 +1,38 @@
 """FastAPI entry point. Loads data on startup and wires every endpoint from the
 spec's endpoint->module map (section 15)."""
+import glob
+import logging
 import os
+import re
+import shutil
 import tempfile
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import config
 import db
-from data_store import get_store
-from rules.eligibility import Profile
+import privacy
+from data_store import get_store, city_of
+from rules import identifiers
+from rules.eligibility import Profile, validate_bundle
 from rules.quote import build_quote
-from advisor import agent
+from advisor import agent, fallback
 from advisor.segment import infer_segment
 from kyc import validate as kyc_validate, lookups
 from tracker import orders
 from propensity import score as propensity
-import privacy
+import demo
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("udyam")
 
 app = FastAPI(title="Project Udyam Digital API", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+KYC_SLOTS = ["gst_certificate", "udyam_certificate", "signatory_id", "address_proof"]
 
 
 @app.on_event("startup")
@@ -32,9 +43,13 @@ def _startup():
 
 # ---------- models ----------
 class RecommendReq(BaseModel):
-    profile: dict
+    gstin: Optional[str] = None            # verified server-side; the client's flag is ignored
+    profile: dict = {}
     current_spend: Optional[int] = None
     language: str = "en"
+    priority: Optional[str] = None
+    requested: Optional[list[str]] = None  # product ids the owner asked for
+    message: Optional[str] = None          # free-text request ("add a leased line")
 
 
 class QuoteReq(BaseModel):
@@ -43,14 +58,42 @@ class QuoteReq(BaseModel):
     bundle: list[str]
     qty: Optional[dict] = None
     current_spend: Optional[int] = None
+    price_mode: str = "auto"
+    profile: Optional[dict] = None         # if given, eligibility is re-checked
 
 
 class OrderReq(BaseModel):
     bundle: list[str]
+    qty: Optional[dict] = None
+    gstin: Optional[str] = None
+    profile: dict = {}
+    price_mode: str = "auto"
+    current_spend: Optional[int] = None
 
 
 class ScoreReq(BaseModel):
     lead: dict
+
+
+# ---------- helpers ----------
+def _verified_profile(gstin: Optional[str], raw: dict) -> Profile:
+    """Build the eligibility Profile. GSTIN status comes from the registry, never
+    from the client."""
+    d = dict(raw or {})
+    active = False
+    if gstin:
+        g = get_store().gstin_lookup(gstin.strip().upper())
+        active = bool(g and str(g.get("status")).lower() == "active"
+                      and identifiers.gstin_checksum_ok(gstin.strip().upper()))
+    d["has_active_gstin"] = active
+    return Profile.from_dict(d)
+
+
+def require_consent(receipt: Optional[str]):
+    """DPDP: no KYC collection before a consent receipt exists (O8)."""
+    if not receipt or not privacy.get_consent(receipt):
+        raise HTTPException(403, "Consent required before KYC: accept the consent notice first "
+                                 "(POST /privacy/consent) and send the receipt id.")
 
 
 # ---------- basic ----------
@@ -70,7 +113,7 @@ def catalogue():
 # ---------- O1 onboarding ----------
 @app.get("/gstin/{gstin}")
 def gstin(gstin: str):
-    r = lookups.gstin_status(gstin)
+    r = lookups.gstin_status(gstin.upper())
     if not r.get("found"):
         raise HTTPException(404, "GSTIN not found")
     return r
@@ -78,7 +121,7 @@ def gstin(gstin: str):
 
 @app.get("/udyam/{udyam}")
 def udyam(udyam: str):
-    r = lookups.udyam_status(udyam)
+    r = lookups.udyam_status(udyam.upper())
     if not r.get("found"):
         raise HTTPException(404, "Udyam not found")
     return r
@@ -86,76 +129,96 @@ def udyam(udyam: str):
 
 @app.get("/onboard")
 def onboard(gstin: str = Query(...), udyam: Optional[str] = None):
-    """GSTIN-first autofill + inferred (confirmable) segment."""
-    g = get_store().gstin_lookup(gstin)
+    """GSTIN-first autofill. Returns the business card, an inferred (confirmable)
+    segment and priors for the fields the registry does not carry."""
+    store = get_store()
+    gstin = gstin.strip().upper()
+    if not (identifiers.gstin_format_ok(gstin) and identifiers.gstin_checksum_ok(gstin)):
+        raise HTTPException(422, "That GSTIN is not valid (format or checksum). Please re-check it.")
+    g = store.gstin_lookup(gstin)
     if not g:
-        raise HTTPException(404, "GSTIN not found in registry")
-    u = get_store().udyam_lookup(udyam) if udyam else None
+        raise HTTPException(404, "GSTIN not found in the registry")
+
+    status = g.get("status")
+    u = store.udyam_lookup(udyam.strip().upper()) if udyam else store.udyam_for_gstin(g)
     seg = infer_segment(g, u)
-    return {
+    city = city_of(g.get("principal_place_of_business"))
+    tier, tier_known = store.city_tier(city)
+    accepted = str(status).lower() == "active"
+    out = {
         "gstin": gstin,
+        "accepted": accepted,
+        "reject_reason": None if accepted else
+            f"This GSTIN is {status} in the GST registry. Only Active registrations can be onboarded.",
         "legal_name": g.get("legal_name"),
         "trade_name": g.get("trade_name"),
         "constitution": g.get("constitution"),
         "state": g.get("state"),
+        "city": city,
+        "city_tier": tier, "city_tier_known": tier_known,
         "principal_place_of_business": g.get("principal_place_of_business"),
-        "status": g.get("status"),
-        "inferred_segment": seg,         # {segment, confidence, basis} — confirm in UI
+        "registration_date": g.get("registration_date"),
+        "status": status,
+        "udyam": None if not u else {
+            "udyam_number": u["udyam_number"], "enterprise_type": u["enterprise_type"],
+            "major_activity": u["major_activity"], "nic_description": u["nic_description"]},
+        "inferred_segment": seg,           # {segment, confidence, basis} - the owner confirms
+        "employee_prior": store.employee_prior.get(seg["segment"], 5),
+        "sites_prior": store.sites_prior.get(seg["segment"], 1),
+        "autofilled_fields": sum(v not in (None, "") for v in
+                                 [g.get("legal_name"), g.get("trade_name"), g.get("constitution"),
+                                  g.get("state"), city, tier, g.get("principal_place_of_business"),
+                                  seg["segment"], u and u["enterprise_type"], u and u["major_activity"]]),
     }
+    log.info("onboard gstin=%s status=%s segment=%s", privacy.mask(gstin), status, seg["segment"])
+    return out
+
+
+@app.get("/demo/profiles")
+def demo_profiles():
+    """The five pinned test profiles (real registry identifiers) for the demo."""
+    return demo.profiles()
 
 
 # ---------- O2 advisor ----------
+@app.get("/advisor/questions")
+def advisor_questions(segment: str = "micro", lang: str = "en",
+                      num_sites: Optional[int] = None, current_spend: Optional[int] = None,
+                      priority: Optional[str] = None):
+    known = {"num_sites": num_sites, "current_spend": current_spend, "priority": priority}
+    return fallback.questions(Profile(segment=segment), lang, known)
+
+
 @app.post("/advisor/recommend")
 def recommend(req: RecommendReq):
-    return agent.recommend(req.profile, req.current_spend, req.language)
+    profile = _verified_profile(req.gstin, req.profile)
+    return agent.recommend(profile.__dict__, req.current_spend, req.language,
+                           req.priority, req.requested, req.message)
 
 
 # ---------- O3 quote ----------
 @app.post("/quote")
 def quote(req: QuoteReq):
-    return build_quote(req.segment, req.num_sites, req.bundle, req.qty, req.current_spend)
+    q = build_quote(req.segment, req.num_sites, req.bundle, req.qty, req.current_spend,
+                    req.price_mode)
+    if req.profile is not None:
+        ok, reasons = validate_bundle(Profile.from_dict(req.profile), req.bundle)
+        q["eligibility"] = {"ok": ok, "reasons": reasons}
+    return q
 
 
-# ---------- O4 KYC ----------
-@app.get("/kyc/validate")
-def kyc_one(applicant: str = Query(..., description="e.g. K01"),
-            typed_gstin: Optional[str] = None):
-    root = os.path.join(config.DATA_DIR, "kyc_documents")
-    import glob
-    present = {os.path.basename(p).split("_", 1)[1].replace(".png", ""): p
-               for p in glob.glob(os.path.join(root, f"{applicant}_*.png"))}
-    if not present:
-        raise HTTPException(404, f"no documents for {applicant}")
-    return kyc_validate.validate_present(applicant, present, typed_gstin=typed_gstin)
-
-
-@app.get("/kyc/validate_all")
-def kyc_all():
-    root = os.path.join(config.DATA_DIR, "kyc_documents")
-    return kyc_validate.validate_all(root)
-
-
-@app.post("/kyc/upload")
-async def kyc_upload(files: list[UploadFile] = File(...),
-                     typed_gstin: Optional[str] = None):
-    """Upload the 4 docs named <anything>_<doctype>.png (doctype in
-    gst_certificate|udyam_certificate|signatory_id|address_proof)."""
-    tmp = tempfile.mkdtemp(prefix="kyc_upload_")
-    present = {}
-    for f in files:
-        name = f.filename or "doc.png"
-        doctype = name.rsplit("_", 1)[-1].replace(".png", "").lower()
-        dest = os.path.join(tmp, name)
-        with open(dest, "wb") as out:
-            out.write(await f.read())
-        present[doctype] = dest
-    return kyc_validate.validate_present("UPLOAD", present, typed_gstin=typed_gstin)
-
-
-# ---------- tracker ----------
+# ---------- tracker / orders ----------
 @app.post("/order")
 def create_order(req: OrderReq):
-    return orders.create_order(req.bundle)
+    """Accepting the quote. Eligibility is re-checked and the price recomputed
+    SERVER-side - the client's totals are never trusted."""
+    profile = _verified_profile(req.gstin, req.profile)
+    ok, reasons = validate_bundle(profile, req.bundle)
+    if not ok:
+        raise HTTPException(422, {"message": "Bundle is not eligible", "reasons": reasons})
+    q = build_quote(profile.segment, profile.num_sites, req.bundle, req.qty,
+                    req.current_spend, req.price_mode)
+    return orders.create_order(req.bundle, q, business_ref=privacy.mask(req.gstin or ""))
 
 
 @app.get("/order/{order_id}")
@@ -174,42 +237,85 @@ def advance_order(order_id: str):
     return o
 
 
+# ---------- O4 KYC (all KYC endpoints sit behind the consent gate, O8) ----------
+def _specimen_files(applicant: str) -> dict:
+    root = os.path.join(config.DATA_DIR, "kyc_documents")
+    return {os.path.basename(p).split("_", 1)[1].rsplit(".", 1)[0]: p
+            for p in glob.glob(os.path.join(root, f"{applicant}_*.png"))}
+
+
+@app.get("/kyc/applicants")
+def kyc_applicants():
+    root = os.path.join(config.DATA_DIR, "kyc_documents")
+    ids = sorted({os.path.basename(p).split("_")[0] for p in glob.glob(os.path.join(root, "*.png"))})
+    return ids
+
+
+@app.get("/kyc/validate")
+def kyc_one(applicant: str = Query(..., description="specimen id, e.g. K01"),
+            typed_gstin: Optional[str] = None,
+            x_consent_receipt: Optional[str] = Header(None)):
+    require_consent(x_consent_receipt)
+    if not re.fullmatch(r"K\d{2}", applicant):
+        raise HTTPException(400, "applicant must look like K01")
+    present = _specimen_files(applicant)
+    if not present:
+        raise HTTPException(404, f"no documents for {applicant}")
+    return kyc_validate.validate_present(applicant, present, typed_gstin=typed_gstin)
+
+
+@app.get("/kyc/validate_all")
+def kyc_all(x_consent_receipt: Optional[str] = Header(None)):
+    require_consent(x_consent_receipt)
+    return kyc_validate.validate_all(os.path.join(config.DATA_DIR, "kyc_documents"))
+
+
+@app.post("/kyc/upload")
+async def kyc_upload(gst_certificate: Optional[UploadFile] = File(None),
+                     udyam_certificate: Optional[UploadFile] = File(None),
+                     signatory_id: Optional[UploadFile] = File(None),
+                     address_proof: Optional[UploadFile] = File(None),
+                     typed_gstin: Optional[str] = Form(None),
+                     typed_udyam: Optional[str] = Form(None),
+                     order_id: Optional[str] = Form(None),
+                     x_consent_receipt: Optional[str] = Header(None)):
+    """Upload the four KYC documents (one multipart field per slot). Images are
+    OCR'd from a temp folder and DELETED immediately; only the masked outcome is
+    kept (data minimisation). An APPROVE advances the order to 'KYC verified'."""
+    require_consent(x_consent_receipt)
+    slots = {"gst_certificate": gst_certificate, "udyam_certificate": udyam_certificate,
+             "signatory_id": signatory_id, "address_proof": address_proof}
+    tmp = tempfile.mkdtemp(prefix="kyc_upload_")
+    try:
+        present = {}
+        for slot, f in slots.items():
+            if f is None:
+                continue
+            ext = os.path.splitext(f.filename or "")[1].lower()
+            if ext not in (".png", ".jpg", ".jpeg"):
+                raise HTTPException(400, f"{slot}: only PNG/JPG images are accepted")
+            dest = os.path.join(tmp, slot + ext)
+            data = await f.read()
+            if len(data) > 8 * 1024 * 1024:
+                raise HTTPException(400, f"{slot}: file too large (max 8 MB)")
+            with open(dest, "wb") as out:
+                out.write(data)
+            present[slot] = dest
+        result = kyc_validate.validate_present("UPLOAD", present, typed_gstin, typed_udyam)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)       # raw documents never persist
+
+    if order_id:
+        orders.record_kyc(order_id, result["decision"], result.get("gstin_masked"))
+    log.info("kyc decision=%s gstin=%s order=%s", result["decision"],
+             result.get("gstin_masked"), order_id)
+    return result
+
+
 # ---------- O5 propensity ----------
 @app.post("/score")
 def score(req: ScoreReq):
     return propensity.score(req.lead)
-
-
-# ---------- O7 analytics (dashboard) ----------
-@app.get("/analytics/summary")
-def analytics():
-    df = get_store().leads
-    if df.empty:
-        return {"note": "smb_leads.csv not loaded"}
-    n = len(df)
-    act = df[df["outcome"] == "Activated"]
-
-    def rate_by(col):
-        out = {}
-        for k, grp in df.groupby(col):
-            a = (grp["outcome"] == "Activated").sum()
-            out[str(k)] = {"activated": int(a), "total": int(len(grp)),
-                           "rate_pct": round(a / len(grp) * 100, 1)}
-        return out
-
-    return {
-        "total_leads": n,
-        "activation_rate_pct": round(len(act) / n * 100, 1),
-        "median_days_to_activation": float(act["days_lead_to_activation"].median()),
-        "churn_rate_pct": round((act["churned_within_6_months"] == "Y").mean() * 100, 1),
-        "mean_nps": round(act["nps_score"].mean(), 1),
-        "by_gstin": rate_by("has_gstin"),
-        "by_segment": rate_by("segment"),
-        "by_lead_source": rate_by("lead_source"),
-        "by_city_tier": rate_by("city_tier"),
-        "top_drop_reasons": df[df["drop_reason"].notna()]["drop_reason"]
-                              .value_counts().head(8).to_dict(),
-    }
 
 
 # ---------- O8 privacy ----------
