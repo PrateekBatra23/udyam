@@ -20,7 +20,7 @@ export const api = {
   health: () => req("/health"),
   catalogue: () => req("/catalogue"),
   demoProfiles: () => req("/demo/profiles"),
-  onboard: (gstin) => req(`/onboard?gstin=${encodeURIComponent(gstin)}`),
+  onboard: (gstin) => post("/onboard", { gstin }),
   questions: (segment, lang) => req(`/advisor/questions?segment=${segment}&lang=${lang}`),
   recommend: (body) => post("/advisor/recommend", body),
   quote: (body) => post("/quote", body),
@@ -28,7 +28,8 @@ export const api = {
   getOrder: (id) => req(`/order/${id}`),
   advanceOrder: (id) => req(`/order/${id}/advance`, { method: "POST" }),
   consentNotice: () => req("/privacy/consent"),
-  recordConsent: (ref) => req(`/privacy/consent?business_ref=${encodeURIComponent(ref || "visitor")}`, { method: "POST" }),
+  recordConsent: (ref) => post("/privacy/consent", { business_ref: ref || "visitor" }),
+  withdrawConsent: (id) => req(`/privacy/consent/${id}/withdraw`, { method: "POST" }),
   getConsent: (id) => req(`/privacy/consent/${id}`),
   kycApplicants: () => req("/kyc/applicants"),
   kycValidate: (applicant, receipt, typedGstin) =>

@@ -76,8 +76,6 @@ export default function Advisor() {
             <div key={r.product_id} className="card border-amber-200 bg-amber-50" role="status">
               <div className="font-semibold text-amber-800">{t("refused_title")}: {r.name}</div>
               <p className="text-sm text-amber-900 mt-1">{r.message}</p>
-              {r.alternatives?.length > 0 && (
-                <p className="text-xs text-amber-800 mt-1">{t("instead")}: {r.alternatives.map((a) => a.name).join(", ")}</p>)}
             </div>))}
 
           <div className="card text-sm text-slate-700">

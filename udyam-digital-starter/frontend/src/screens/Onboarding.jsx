@@ -20,6 +20,7 @@ export default function Onboarding() {
   const [skip, setSkip] = useState(false);
   const [tier, setTier] = useState(2);
   const [route, setRoute] = useState(null);
+  const [sitesOv, setSitesOv] = useState(null);   // demo profiles carry their own site count
 
   const check = checkGstin(gstin);
   useEffect(() => { api.demoProfiles().then(setDemos).catch(() => {}); }, []);
@@ -39,7 +40,10 @@ export default function Onboarding() {
     const d = demos.find((x) => String(x.id) === id);
     if (!d) return;
     setJourney({ demo: d });
-    if (d.gstin) { setSkip(false); setGstin(d.gstin); lookup(d.gstin); }
+    if (d.gstin) {
+      setSkip(false); setGstin(d.gstin);
+      lookup(d.gstin).then(() => { setTeam(d.profile.employee_count); setSitesOv(d.profile.num_sites); });
+    }
     else {
       setFound(null); setSkip(true); setSegment(d.profile.segment);
       setTeam(d.profile.employee_count); setTier(d.profile.city_tier); setGstin("");
@@ -48,7 +52,7 @@ export default function Onboarding() {
 
   async function continueWithGstin() {
     setJourney({ biz: found, gstin: found.gstin, profile: {
-      segment, city_tier: found.city_tier, employee_count: Number(team), num_sites: found.sites_prior || 1,
+      segment, city_tier: found.city_tier, employee_count: Number(team), num_sites: sitesOv || found.sites_prior || 1,
       legal_name: found.legal_name, city: found.city }, rec: null, plan: null });
     goto("advisor");
   }
@@ -86,7 +90,7 @@ export default function Onboarding() {
               {check.state === "ok" ? "✓" : check.state.startsWith("bad") ? "✗" : ""}</span>
           </div>
           <p id="gstin-msg" className={`text-xs mt-1 min-h-[1rem] ${tone}`}>{check.message}</p>
-          <button className="btn w-full mt-3" onClick={() => lookup()} disabled={check.state !== "ok" || busy}>
+          <button className="btn w-full mt-3" onClick={() => { setSitesOv(null); lookup(); }} disabled={check.state !== "ok" || busy}>
             {busy ? t("thinking") : t("gstin_cta")}</button>
           {err && <p className="text-sm text-red-600 mt-2" role="alert">{err}</p>}
           <button className="text-xs text-slate-500 mt-4 underline" onClick={() => { setSkip(true); setFound(null); }}>

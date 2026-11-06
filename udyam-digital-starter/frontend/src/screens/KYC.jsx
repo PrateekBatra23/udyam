@@ -53,6 +53,12 @@ export default function KYC() {
   const specimen = () => run(async () => setResult(await api.kycValidate(applicant, receipt.receipt_id)));
   const all = () => run(async () => setBatch(await api.kycAll(receipt.receipt_id)));
 
+  async function withdraw() {
+    if (!window.confirm("Withdraw consent? The verification record linked to it will be erased.")) return;
+    try { await api.withdrawConsent(receipt.receipt_id); setJourney({ consent: null, kycDecision: null }); setResult(null); setBatch(null); setDeclined(true); }
+    catch (e) { setErr(e.message); }
+  }
+
   function download() {
     const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
@@ -82,7 +88,10 @@ export default function KYC() {
                 <div className="text-xs text-slate-500">{new Date(receipt.timestamp_utc).toLocaleString()} · <MaskedId value={receipt.business_ref} /></div>
                 <div className="text-xs text-save mt-1">{t("retention_countdown", { n: daysLeft })}</div>
               </div>
-              <button className="pill bg-accel-light text-accel" onClick={download}>{t("download_receipt")}</button>
+              <div className="flex flex-col gap-1 items-end">
+                <button className="pill bg-accel-light text-accel" onClick={download}>{t("download_receipt")}</button>
+                <button className="pill bg-slate-100 text-slate-600" onClick={withdraw}>{t("withdraw")}</button>
+              </div>
             </div>
           </div>
 

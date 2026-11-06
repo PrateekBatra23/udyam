@@ -95,15 +95,16 @@ def advance(order_id: str) -> dict | None:
     return _row_to_dict(r) if r else None
 
 
-def record_kyc(order_id: str, decision: str, gstin_masked: str | None):
+def record_kyc(order_id: str, decision: str, gstin_masked: str | None,
+               consent_receipt_id: str | None = None):
     """Store the (masked) KYC outcome. APPROVE moves the order to 'KYC verified';
     REVIEW/REJECT leave it at 'Order placed' for follow-up."""
     with db.cursor(commit=True) as cur:
         cur.execute(
             """UPDATE orders
-                  SET kyc_status = %s, kyc_gstin_masked = %s,
+                  SET kyc_status = %s, kyc_gstin_masked = %s, consent_receipt_id = %s,
                       current_stage_index = CASE WHEN %s = 'APPROVE'
                                                  THEN GREATEST(current_stage_index, 1)
                                                  ELSE current_stage_index END
                 WHERE order_id = %s""",
-            (decision, gstin_masked, decision, order_id))
+            (decision, gstin_masked, consent_receipt_id, decision, order_id))

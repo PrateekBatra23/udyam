@@ -74,6 +74,7 @@
   "consent_accept": "I agree - continue",
   "consent_decline": "Not now",
   "consent_receipt": "Consent receipt",
+  "withdraw": "Withdraw consent",
   "download_receipt": "Download receipt",
   "retention_countdown": "Documents are auto-deleted in {n} days",
   "kyc_upload_title": "Upload your documents",

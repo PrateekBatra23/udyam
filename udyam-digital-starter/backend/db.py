@@ -57,7 +57,7 @@ def init_db():
         )""")
         for col in ("business_ref TEXT", "monthly_inr INTEGER", "one_time_inr INTEGER",
                     "contract_months INTEGER", "lines JSONB", "kyc_status TEXT",
-                    "kyc_gstin_masked TEXT", "retention_until DATE"):
+                    "kyc_gstin_masked TEXT", "retention_until DATE", "consent_receipt_id TEXT"):
             cur.execute(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {col}")
         cur.execute("""CREATE TABLE IF NOT EXISTS consent_receipts (
             receipt_id TEXT PRIMARY KEY,
@@ -66,6 +66,7 @@ def init_db():
             retention_until DATE NOT NULL,
             notice JSONB NOT NULL
         )""")
+        cur.execute("ALTER TABLE consent_receipts ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ")
 
 
 def as_json(v) -> str:

@@ -36,10 +36,14 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 KYC_SLOTS = ["gst_certificate", "udyam_certificate", "signatory_id", "address_proof"]
 
 
+privacy.install_log_masking()      # identifiers never reach the logs in clear
+
+
 @app.on_event("startup")
 def _startup():
     get_store()   # load reference CSVs into memory once
     db.init_db()  # create Postgres tables for orders + consent if absent
+    log.info("retention purge: %s", privacy.purge_expired())
 
 
 # ---------- models ----------
@@ -92,9 +96,10 @@ def _verified_profile(gstin: Optional[str], raw: dict) -> Profile:
 
 def require_consent(receipt: Optional[str]):
     """DPDP: no KYC collection before a consent receipt exists (O8)."""
-    if not receipt or not privacy.get_consent(receipt):
+    if not privacy.is_active(receipt):
         raise HTTPException(403, "Consent required before KYC: accept the consent notice first "
-                                 "(POST /privacy/consent) and send the receipt id.")
+                                 "(POST /privacy/consent) and send the receipt id in X-Consent-Receipt. "
+                                 "A withdrawn or expired receipt is not valid.")
 
 
 # ---------- basic ----------
@@ -128,12 +133,18 @@ def udyam(udyam: str):
     return r
 
 
-@app.get("/onboard")
-def onboard(gstin: str = Query(...), udyam: Optional[str] = None):
-    """GSTIN-first autofill. Returns the business card, an inferred (confirmable)
-    segment and priors for the fields the registry does not carry."""
+class OnboardReq(BaseModel):
+    gstin: str
+    udyam: Optional[str] = None
+
+
+@app.post("/onboard")
+def onboard(req: OnboardReq):
+    """GSTIN-first autofill. POST (not GET) so the identifier never appears in a URL or
+    access log. Returns the business card, an inferred (confirmable) segment and
+    priors for the fields the registry does not carry."""
     store = get_store()
-    gstin = gstin.strip().upper()
+    gstin, udyam = req.gstin.strip().upper(), req.udyam
     if not (identifiers.gstin_format_ok(gstin) and identifiers.gstin_checksum_ok(gstin)):
         raise HTTPException(422, "That GSTIN is not valid (format or checksum). Please re-check it.")
     g = store.gstin_lookup(gstin)
@@ -307,7 +318,7 @@ async def kyc_upload(gst_certificate: Optional[UploadFile] = File(None),
         shutil.rmtree(tmp, ignore_errors=True)       # raw documents never persist
 
     if order_id:
-        orders.record_kyc(order_id, result["decision"], result.get("gstin_masked"))
+        orders.record_kyc(order_id, result["decision"], result.get("gstin_masked"), x_consent_receipt)
     log.info("kyc decision=%s gstin=%s order=%s", result["decision"],
              result.get("gstin_masked"), order_id)
     return result
@@ -341,9 +352,21 @@ def consent_notice():
     return privacy.consent_notice()
 
 
+class ConsentReq(BaseModel):
+    business_ref: str = "visitor"          # masked before it is stored
+
+
 @app.post("/privacy/consent")
-def record_consent(business_ref: str = Query(...)):
-    return privacy.record_consent(business_ref)
+def record_consent(req: ConsentReq):
+    return privacy.record_consent(req.business_ref)
+
+
+@app.post("/privacy/consent/{receipt_id}/withdraw")
+def withdraw_consent(receipt_id: str):
+    r = privacy.withdraw(receipt_id)
+    if not r:
+        raise HTTPException(404, "receipt not found")
+    return r
 
 
 @app.get("/privacy/consent/{receipt_id}")

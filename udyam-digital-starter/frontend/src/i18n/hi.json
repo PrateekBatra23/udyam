@@ -74,6 +74,7 @@
   "consent_accept": "मैं सहमत हूँ - आगे बढ़ें",
   "consent_decline": "अभी नहीं",
   "consent_receipt": "सहमति रसीद",
+  "withdraw": "सहमति वापस लें",
   "download_receipt": "रसीद डाउनलोड करें",
   "retention_countdown": "दस्तावेज़ {n} दिन में अपने-आप हट जाएँगे",
   "kyc_upload_title": "अपने दस्तावेज़ अपलोड करें",
