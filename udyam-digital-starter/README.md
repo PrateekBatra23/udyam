@@ -1,94 +1,113 @@
-# Project Udyam Digital — prototype
+# Project Udyam Digital - prototype
 
-Digital-first acquisition & onboarding journey for Accel Business (fictional).
-Built to the accompanying `PROJECT_UDYAM_BUILD_SPEC.md`. **All data is synthetic.**
+A digital-first, phone-first, bilingual (English / Hindi) journey that takes a small
+business from "who are you?" to an activated bundle in one sitting: GSTIN-first
+onboarding, an advisor that recommends a bundle, a transparent quote, document OCR
+KYC under DPDP-style consent, and an order tracker. A back-office dashboard shows the
+business case. Fictional brand "Accel Business"; **all data is synthetic**.
 
-This is a **starter scaffold**: the deterministic backend logic (eligibility,
-quote, GSTIN checksum + OCR correction, KYC validation, propensity) is
-implemented; the LLM advisor, model training and frontend screens are wired and
-runnable. Build on top of it following the spec's build order (§0).
+```
+frontend (React + Vite + Tailwind)  --/api-->  backend (FastAPI)  -->  PostgreSQL (orders, consent)
+                                                   |
+                          in-memory: catalogue + GSTIN/Udyam registries + leads (pandas)
+                          OCR: Tesseract + OpenCV     Advisor: rules engine (+ Claude if a key is set)
+```
 
 ## Prerequisites
-- Python 3.11+, Node 18+
-- **PostgreSQL 14+** running (stores orders + consent receipts; reference data
-  stays in memory). Create a database and set `DATABASE_URL`:
-  ```bash
-  createdb udyam     # or: psql -c "CREATE DATABASE udyam;"
-  export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/udyam
-  ```
-  Tables are created automatically on backend startup (`db.init_db()`).
-- Tesseract OCR engine (for the KYC module):
-  - Debian/Ubuntu: `sudo apt-get install -y tesseract-ocr`
-  - macOS: `brew install tesseract`
+- Python 3.10+ and Node 18+
+- **PostgreSQL 14+** reachable via `DATABASE_URL`. Tables are created on startup.
+  - Docker: `docker run --name udyam-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=udyam -p 5432:5432 -d postgres:16`
+    (already created: `docker start udyam-pg`)
+  - or any local Postgres with a database named `udyam`.
+- **Tesseract OCR** engine with English data:
+  - Debian/Ubuntu `sudo apt-get install -y tesseract-ocr` - macOS `brew install tesseract`
+  - Windows: install Tesseract and make sure `tesseract` is on PATH. If it reports a missing
+    `eng.traineddata`, set `TESSDATA_PREFIX` to the folder that contains it.
 
-## 1. Add the data pack
-Place the provided synthetic data here (see spec §0):
+## 1. Data
+Put the synthetic data pack in `data/`:
 ```
 data/product_catalogue.csv
 data/smb_leads.csv
 data/mock_gstin_registry.csv
 data/mock_udyam_registry.csv
-data/kyc_documents/Kxx_*.png
+data/kyc_documents/Kxx_*.png        (47 images, applicants K01-K12)
 ```
+(The data is git-ignored. To use another location set `DATA_DIR`.)
 
 ## 2. Backend
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app:app --reload           # http://localhost:8000  (docs at /docs)
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/udyam
+uvicorn app:app --reload                                # http://localhost:8000  (docs at /docs)
 ```
-Optional LLM advisor: `export LLM_API_KEY=sk-...` (without it, the advisor runs
-the rules-only fallback — the demo never hard-depends on an API).
+Optional LLM advisor: `export LLM_API_KEY=sk-...`. Without a key the advisor runs its
+rules-only engine, so the demo never depends on an external API. Either way, every
+bundle is re-validated against the eligibility rules on the server.
 
-## 3. Train the propensity model (Tier 2)
+## 3. Propensity model (Tier 2)
 ```bash
-python notebooks/train_propensity.py       # writes models/propensity.pkl
-python notebooks/churn_nps_analysis.py      # prints segment/contract churn & NPS
+python notebooks/train_propensity.py       # writes models/propensity.pkl, prints AUC + band table
+python notebooks/churn_nps_analysis.py     # churn / NPS by segment and contract length
 ```
-Until the model exists, `/score` uses a documented heuristic.
+(`notebooks/*.ipynb` hold the same analysis.) Until a model file exists, `/score` uses a
+documented heuristic and the dashboard says so.
 
 ## 4. Frontend
 ```bash
 cd frontend
 npm install
-npm run dev                         # http://localhost:5173 (proxies /api -> :8000)
+npm run dev                                 # http://localhost:5173  (proxies /api -> :8000)
 ```
 
-## Demo path (≤3 min)
-1. **Start** — enter an Active GSTIN from the registry → business autofills,
-   segment inferred.
-2. **Advisor** — 3 questions → Value + Lite bundles (ineligible items auto-removed).
-3. **Quote** — toggle add-ons, see live savings vs current spend → Accept.
-4. **KYC** — accept consent → validate with the GSTIN captured at onboarding:
-   `K01` (Cancelled GSTIN → **REJECT**), `K05` (missing Udyam → **REJECT**),
-   `K11` (stale address proof → **REJECT**). "Run all 12" runs the OCR-only
-   batch and shows the STP rate (status/identity checks need the typed GSTIN;
-   unreadable certs route to **REVIEW**, never a false reject — see note below).
-5. **Track** — order stages + expected activation date.
-6. **Insights** — activation by GSTIN/segment/source, churn, NPS, drop reasons.
+## 5. Tests
+```bash
+cd backend
+pip install pytest httpx
+pytest -q          # rules, pricing, advisor, KYC decisions (incl. real OCR), API, privacy
+```
+Tests that need Postgres are skipped automatically if it is not running.
 
-## Endpoint → module map
-See spec §15. API docs auto-generated at `/docs`.
+## Demo path (about 3 minutes)
+Open the app on a phone-sized viewport. Use **Try a demo business** on the first screen.
 
-## Known behaviour & tuning notes
-- **Typed GSTIN is authoritative (spec O4).** KYC status/identity checks are
-  reliable when the GSTIN is captured at onboarding. In the pure-OCR batch
-  (`/kyc/validate_all`, no typed input), certs whose GSTIN can't be read/repaired
-  to a registry match route to **REVIEW** — by design, not a bug. The three
-  planted failures that don't depend on GSTIN OCR (K05 missing doc, K11 stale
-  proof) are caught in the batch; status issues (K01 Cancelled) are caught via
-  the typed path. Smoke-tested: K01+typed → REJECT (Cancelled), K05 → REJECT
-  (missing Udyam), K11 → REJECT (stale).
-- **OCR preprocessing is a tuning surface.** These specimens are clean digital
-  images; heavy deskew can occasionally hurt a read. If batch REVIEW rate is too
-  high, try OCR on the original image first and fall back to preprocessing only
-  on low confidence. Left as a clearly-marked tuning point in `kyc/ocr.py`.
+1. **Start** - pick *2. Dental clinic*. The GSTIN gets an instant tick, the business card
+   fills in (10 details), the segment is a guess you confirm (*Professional office*, from the
+   registered activity) and the team size is pre-filled.
+2. **Advisor** - three questions (sites, current spend, top priority). Get a **Value** and a
+   **Lite** bundle with plain-language reasons. Switch to Hindi with the toggle.
+   *Probe:* pick demo *5* (2-person shop asking for Managed SD-WAN) - it refuses, and says why.
+3. **Quote** - toggle add-ons and watch the monthly total, setup fee and contract update
+   instantly. Switch off the internet line and its dependants switch off with it. Tap
+   **Show me a cheaper option** for Lite. See *Today vs With Accel* and the saving.
+4. **Accept** - the **consent notice** appears before anything is collected. Accept, get a
+   receipt (downloadable, withdrawable) and a retention countdown.
+5. **KYC** - upload four documents, or use the specimens: *K01* (Cancelled GSTIN, and no Udyam
+   number on the certificate), *K05* (missing Udyam certificate), *K11* (address proof 257 days
+   old) are **rejected** with the reason; *K07* (name mismatch) and *K04* (unreadable) go to
+   **review**, never a false reject. **Run all 12** shows the straight-through rate.
+6. **Track** - stages with a date each, and the expected activation date.
+7. **Insights** - the five success metrics against their baselines, funnel, propensity bands
+   (who gets self-serve vs nurture), churn / NPS, and which drop reasons the journey removes.
 
-## Assumptions made
-_(Claude Code: record here any decision made mid-build that the spec didn't
-cover — per spec §14.)_
-- KYC "name consistency" compares the GST legal/trade name to the signatory
-  card's *For business* field (not the person's name), and a mismatch routes to
-  REVIEW rather than auto-reject (OCR field extraction is noisy).
-- `/kyc/validate_all` runs OCR-only (no typed GSTIN) as an STP stress view.
+## What is where
+```
+backend/   app.py (API)  rules/ (eligibility, quote, identifiers)  advisor/  kyc/  tracker/
+           propensity/  analytics.py  privacy.py  demo.py  tests/
+frontend/  src/screens (6 screens)  src/components  src/i18n (en, hi)  src/lib  src/api
+notebooks/ propensity model + churn/NPS analysis (.py and .ipynb)
+data/      synthetic data pack (git-ignored)      models/  trained model (git-ignored)
+```
+
+## Configuration
+`backend/config.py` holds every pinned constant: `TODAY` (2026-07-15, used for all date
+checks instead of the system clock), retention (180 days), propensity bands, OCR confidence
+and name-match thresholds. Environment: `DATABASE_URL`, `DATA_DIR`, `LLM_API_KEY`, `LLM_MODEL`.
+
+## Privacy by design
+Consent before KYC and only after a quote is accepted; uploaded images are read from a temp
+folder and deleted immediately; identifiers are masked to the last four characters in the UI,
+API responses and logs; identifiers never travel in URLs; consent can be withdrawn (which
+erases the linked verification record); records past 180 days are purged.

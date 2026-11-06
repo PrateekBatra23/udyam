@@ -12,3 +12,4 @@ data/kyc_documents/
 # dev-only notes
 DEV_NOTES.md
 .claude/
+docs/
