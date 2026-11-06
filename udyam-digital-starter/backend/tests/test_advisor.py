@@ -211,3 +211,28 @@ def test_unparseable_llm_answer_falls_back_to_rules():
     fc = FakeGemini("sorry, I cannot help with that")
     r = agent.recommend(SHOP, client=fc)
     assert r["source"] == "rules" and r["value"]["products"]
+
+
+def test_chatty_model_is_forced_to_answer_on_the_last_round():
+    """A model that keeps requesting tools must be cut off: the final round disables tools."""
+    class Chatty(FakeGemini):
+        def generate_content(self, model, contents, config):
+            self.calls += 1
+            self.seen.append((model, list(contents), config))
+            forced = getattr(getattr(config, "tool_config", None), "function_calling_config", None)
+            if forced is not None and str(getattr(forced, "mode", "")).endswith("NONE"):
+                return self._resp([SimpleNamespace(function_call=None, thought=False,
+                                                   text='{"value":["P01"],"lite":["P04"],"rationale":"Done."}')])
+            fc = SimpleNamespace(name="get_catalogue", args={})
+            return self._resp([SimpleNamespace(function_call=fc, text=None, thought=False)])
+    fc = Chatty("")
+    r = agent.recommend(SHOP, client=fc)
+    assert r["source"] == "llm" and "Done." in r["rationale"]
+    from advisor import llm
+    assert fc.calls == llm.MAX_TOOL_ROUNDS
+
+
+def test_hindi_refusal_reads_as_a_sentence():
+    r = rec(SHOP, requested=["P10"], language="hi")
+    m = r["refusals"][0]["message"]
+    assert "क्योंकि:" in m and "के लिए कम से कम" not in m

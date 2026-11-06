@@ -10,7 +10,7 @@ import json
 
 import config
 
-MAX_TOOL_ROUNDS = 6
+MAX_TOOL_ROUNDS = 8
 
 
 def make_client():
@@ -40,11 +40,18 @@ def run_chat(client, system: str, brief: dict, tool_schemas: list[dict], run_too
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         temperature=0.2,
     )
+    # last round: tools switched off so the model must commit to a final answer
+    final_config = types.GenerateContentConfig(
+        system_instruction=system, tools=[_declarations(tool_schemas)], temperature=0.2,
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        tool_config=types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(mode="NONE")))
     contents = [types.Content(role="user", parts=[types.Part(text=json.dumps(brief))])]
 
-    for _ in range(MAX_TOOL_ROUNDS):
+    for i in range(MAX_TOOL_ROUNDS):
+        last = i == MAX_TOOL_ROUNDS - 1
         resp = client.models.generate_content(model=config.LLM_MODEL, contents=contents,
-                                              config=gen_config)
+                                              config=final_config if last else gen_config)
         cand = resp.candidates[0]
         parts = list(cand.content.parts or [])
         calls = [p.function_call for p in parts if getattr(p, "function_call", None)]

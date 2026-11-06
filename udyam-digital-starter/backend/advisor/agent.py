@@ -28,6 +28,8 @@ Rules you must follow:
 - Verify every bundle with check_eligibility before answering; fix anything it flags.
 - Every bundle needs an internet line (P01-P06) before add-ons that depend on one.
 - 'value' is the recommended bundle; 'lite' is the cheaper bundle: connectivity plus ONE core item.
+- Be economical: call get_catalogue once, check_eligibility at most once per bundle (you may
+  request several calls at the same time), then answer. Do not re-check unchanged bundles.
 - Explain in plain language, in the owner's preferred language. No product codes in the prose.
 Return ONLY JSON: {"value":["P01",...],"lite":["P04",...],"rationale":"..."}"""
 

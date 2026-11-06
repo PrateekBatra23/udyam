@@ -89,12 +89,12 @@ BLOCKER = {
         "unknown": "is not in our catalogue",
     },
     "hi": {
-        "employees": "के लिए कम से कम {need} कर्मचारी चाहिए (आपके पास {have})",
-        "sites": "के लिए कम से कम {need} साइट चाहिए (आपके पास {have})",
-        "gstin": "के लिए सक्रिय GSTIN ज़रूरी है",
-        "city_tier": "आपके शहर में अभी उपलब्ध नहीं है",
-        "dependency": "से पहले उसी बंडल में इंटरनेट कनेक्शन चाहिए ({names})",
-        "unknown": "हमारे कैटलॉग में नहीं है",
+        "employees": "कम से कम {need} कर्मचारी चाहिए (आपके पास {have})",
+        "sites": "कम से कम {need} साइट चाहिए (आपके पास {have})",
+        "gstin": "सक्रिय GSTIN चाहिए",
+        "city_tier": "यह आपके शहर में अभी उपलब्ध नहीं है",
+        "dependency": "उसी बंडल में पहले इंटरनेट कनेक्शन चाहिए ({names})",
+        "unknown": "यह हमारे कैटलॉग में नहीं है",
     },
 }
 
@@ -111,7 +111,7 @@ def blocker_text(lang: str, b: dict, name_of=lambda pid: pid) -> str:
 
 def refusal(lang: str, name: str, reasons: list, alternatives: list) -> str:
     if lang == "hi":
-        base = f"मैं {name} नहीं जोड़ सकता: " + "; ".join(reasons) + "।"
+        base = f"मैं {name} नहीं जोड़ सकता, क्योंकि: " + "; ".join(reasons) + "।"
         return base + (f" इसके बजाय {', '.join(alternatives)} देखें।" if alternatives else "")
     base = f"I can't add {name}: it " + "; and it ".join(reasons) + "."
     return base + (f" Instead, consider {', '.join(alternatives)}." if alternatives else "")

@@ -42,7 +42,7 @@ ADDRESS_PROOF_MAX_AGE_DAYS = 90                # reject proofs older than this b
 # --- LLM (Advisor) ---
 LLM_API_KEY = (os.environ.get("LLM_API_KEY") or os.environ.get("GEMINI_API_KEY")
                or os.environ.get("GOOGLE_API_KEY") or "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.5-flash")   # Google Gemini
+LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-3.8-flash")   # Google Gemini
 USE_LLM = bool(LLM_API_KEY)                    # if False, advisor uses rules-only fallback
 
 # --- Section 14C thresholds ---
