@@ -3,7 +3,7 @@
 Design: candidate-set constraining + server-side backstop.
   1. The rules answer (fallback.recommend) is ALWAYS computed first. It is the
      no-LLM response and the constrained candidate set.
-  2. With LLM_API_KEY set, Claude runs a tool-calling loop. The business profile
+  2. With LLM_API_KEY set, Gemini runs a tool-calling loop (advisor/llm.py). The business profile
      is bound server-side, get_catalogue only ever returns eligible products, and
      the model's job is to choose/trim within them and explain in the owner's
      language.
@@ -18,10 +18,8 @@ import re
 import config
 from rules.eligibility import Profile, strip_ineligible
 from rules.bundles import CONNECTIVITY
-from advisor import fallback, messages
+from advisor import fallback, llm, messages
 from advisor.tools import TOOL_SCHEMAS, run_tool
-
-MAX_TOOL_ROUNDS = 6
 
 SYSTEM = """You are Accel Business's onboarding advisor for small businesses in India.
 You recommend telecom + cloud bundles for ONE business whose profile is fixed by the server.
@@ -42,8 +40,7 @@ def _extract_json(text: str) -> dict:
 
 def _llm_refine(profile: Profile, base: dict, current_spend, language, priority, client=None) -> dict:
     if client is None:
-        import anthropic
-        client = anthropic.Anthropic(api_key=config.LLM_API_KEY)
+        client = llm.make_client()
     brief = {
         "profile": {"segment": profile.segment, "city_tier": profile.city_tier,
                     "employee_count": profile.employee_count, "num_sites": profile.num_sites,
@@ -55,24 +52,9 @@ def _llm_refine(profile: Profile, base: dict, current_spend, language, priority,
         "starting_point": {"value": [p["product_id"] for p in base["value"]["products"]],
                            "lite": [p["product_id"] for p in base["lite"]["products"]]},
     }
-    msgs = [{"role": "user", "content": json.dumps(brief)}]
-    final_text = ""
-    for _ in range(MAX_TOOL_ROUNDS):
-        resp = client.messages.create(model=config.LLM_MODEL, max_tokens=1500, system=SYSTEM,
-                                      tools=TOOL_SCHEMAS, messages=msgs)
-        if getattr(resp, "stop_reason", "") == "tool_use":
-            msgs.append({"role": "assistant", "content": resp.content})
-            results = []
-            for b in resp.content:
-                if getattr(b, "type", "") == "tool_use":
-                    out = run_tool(b.name, b.input, profile, current_spend)
-                    results.append({"type": "tool_result", "tool_use_id": b.id,
-                                    "content": json.dumps(out, default=str)})
-            msgs.append({"role": "user", "content": results})
-            continue
-        final_text = "".join(getattr(b, "text", "") for b in resp.content
-                             if getattr(b, "type", "") == "text")
-        break
+    final_text = llm.run_chat(
+        client, SYSTEM, brief, TOOL_SCHEMAS,
+        lambda name, args: run_tool(name, args, profile, current_spend))
     return _extract_json(final_text)
 
 

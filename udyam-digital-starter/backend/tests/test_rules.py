@@ -112,3 +112,13 @@ def test_totals_reconcile_with_lines_and_savings():
     if s["monthly_saving_inr"] > 0:
         assert s["payback_months"] == round(q["one_time_inr"] / s["monthly_saving_inr"], 1)
     assert build_quote("micro", 1, ["P01"])["savings"] is None
+
+
+# ------------------------------------------------------------------- .env loading
+def test_dotenv_parser_handles_comments_quotes_and_blanks():
+    import config
+    env = config.parse_dotenv(
+        '# comment\nLLM_API_KEY=abc123   # a Gemini key\nLLM_MODEL="gemini-2.5-flash"\n'
+        "EMPTY=\nDATABASE_URL=postgresql://u:p@h:5432/db\n\nbad line\n")
+    assert env == {"LLM_API_KEY": "abc123", "LLM_MODEL": "gemini-2.5-flash", "EMPTY": "",
+                   "DATABASE_URL": "postgresql://u:p@h:5432/db"}

@@ -127,37 +127,87 @@ def test_retention_block_uses_segment_level_churn(store):
     assert r["retention"]["value_ltv_inr"] > 0
 
 
-# ------------------------------------------------------------------ LLM path
-class FakeClient:
-    """Mimics the Anthropic client: round 1 asks for the catalogue, round 2 answers
-    with a bundle that CONTAINS ineligible products (SD-WAN/leased line for a 2-person shop)."""
-    def __init__(self, answer):
-        self.calls, self.answer = 0, answer
-        self.messages = SimpleNamespace(create=self.create)
+# ------------------------------------------------------------------ LLM path (Gemini)
+class FakeGemini:
+    """Mimics google-genai's client.models.generate_content. Round 1 the model asks for the
+    catalogue; round 2 it answers with a bundle that CONTAINS ineligible products."""
+    def __init__(self, answer, thought=None):
+        self.calls, self.answer, self.thought, self.seen = 0, answer, thought, []
+        self.models = SimpleNamespace(generate_content=self.generate_content)
 
-    def create(self, **kw):
+    @staticmethod
+    def _resp(parts):
+        return SimpleNamespace(candidates=[SimpleNamespace(content=SimpleNamespace(parts=parts, role="model"))])
+
+    def generate_content(self, model, contents, config):
         self.calls += 1
+        self.seen.append((model, list(contents), config))
         if self.calls == 1:
-            blk = SimpleNamespace(type="tool_use", name="get_catalogue", input={}, id="t1")
-            return SimpleNamespace(stop_reason="tool_use", content=[blk])
-        return SimpleNamespace(stop_reason="end_turn",
-                               content=[SimpleNamespace(type="text", text=self.answer)])
+            fc = SimpleNamespace(name="get_catalogue", args={})
+            return self._resp([SimpleNamespace(function_call=fc, text=None, thought=False)])
+        parts = []
+        if self.thought:
+            parts.append(SimpleNamespace(function_call=None, text=self.thought, thought=True))
+        parts.append(SimpleNamespace(function_call=None, text=self.answer, thought=False))
+        return self._resp(parts)
+
+
+SHOP = {"segment": "micro", "city_tier": 2, "employee_count": 2, "num_sites": 1, "has_active_gstin": False}
 
 
 def test_llm_output_is_revalidated_server_side():
     ans = '{"value":["P01","P07","P10","P05"],"lite":["P04","P07"],"rationale":"Good fit."}'
-    fc = FakeClient(ans)
-    prof = {"segment": "micro", "city_tier": 2, "employee_count": 2, "num_sites": 1,
-            "has_active_gstin": False}
-    r = agent.recommend(prof, client=fc)
+    fc = FakeGemini(ans)
+    r = agent.recommend(SHOP, client=fc)
     assert fc.calls == 2 and r["source"] == "llm"
     assert not ({"P10", "P05"} & set(ids(r["value"])))
     assert "Good fit." in r["rationale"]
 
 
+def test_gemini_only_ever_sees_eligible_products_in_the_catalogue(store):
+    """Candidate-set constraining: the tool result handed to the model contains only
+    products this business may buy, and the server bound the profile itself."""
+    fc = FakeGemini('{"value":["P01"],"lite":["P04"],"rationale":"ok"}')
+    agent.recommend(SHOP, client=fc)
+    second_call_contents = fc.seen[1][1]
+    fn_resp = second_call_contents[-1].parts[0].function_response.response["result"]
+    offered = {p["product_id"] for p in fn_resp}
+    from rules.eligibility import eligible_products
+    assert offered == set(eligible_products(Profile.from_dict(SHOP)))
+    assert not ({"P10", "P05", "P15"} & offered)                  # sites / employees / GSTIN gated
+
+
+def test_gemini_request_declares_the_tools_and_disables_auto_calling():
+    fc = FakeGemini('{"value":["P01"],"lite":["P04"],"rationale":"ok"}')
+    agent.recommend(SHOP, client=fc)
+    model, _, cfg = fc.seen[0]
+    names = [d.name for d in cfg.tools[0].function_declarations]
+    assert {"get_catalogue", "check_eligibility", "build_quote"} <= set(names)
+    assert cfg.automatic_function_calling.disable is True
+    assert model.startswith("gemini")
+
+
+def test_gemini_thought_parts_are_not_treated_as_the_answer():
+    fc = FakeGemini('{"value":["P01"],"lite":["P04"],"rationale":"Real answer"}',
+                    thought="internal reasoning, not JSON")
+    r = agent.recommend(SHOP, client=fc)
+    assert r["source"] == "llm" and "Real answer" in r["rationale"]
+
+
+def test_llm_that_drops_the_internet_line_falls_back_to_the_rules_bundle():
+    fc = FakeGemini('{"value":["P07"],"lite":["P07"],"rationale":"x"}')
+    r = agent.recommend(SHOP, client=fc)
+    assert any(p in ids(r["value"]) for p in ("P01", "P02", "P04"))
+
+
 def test_llm_failure_falls_back_to_rules():
     class Boom:
-        messages = SimpleNamespace(create=lambda **k: (_ for _ in ()).throw(RuntimeError("down")))
-    r = agent.recommend({"segment": "micro", "city_tier": 2, "employee_count": 2, "num_sites": 1,
-                         "has_active_gstin": False}, client=Boom())
+        models = SimpleNamespace(generate_content=lambda **k: (_ for _ in ()).throw(RuntimeError("down")))
+    r = agent.recommend(SHOP, client=Boom())
     assert r["source"] == "rules" and "down" in r["llm_error"] and r["value"]["products"]
+
+
+def test_unparseable_llm_answer_falls_back_to_rules():
+    fc = FakeGemini("sorry, I cannot help with that")
+    r = agent.recommend(SHOP, client=fc)
+    assert r["source"] == "rules" and r["value"]["products"]

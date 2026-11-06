@@ -71,7 +71,7 @@ def run_tool(name: str, args: dict, profile: Profile, current_spend=None):
     return {"error": f"unknown tool {name}"}
 
 
-# JSON schema the LLM sees (Anthropic tool-use format)
+# Neutral JSON-schema tool definitions (advisor/llm.py converts them to Gemini function declarations)
 _BUNDLE = {"type": "array", "items": {"type": "string"}}
 TOOL_SCHEMAS = [
     {"name": "get_catalogue",

@@ -1,6 +1,38 @@
 """Central config. Every tunable the spec pins (sections 0, 14C) lives here."""
 import os
+import re
 from datetime import date
+
+
+def parse_dotenv(text: str) -> dict:
+    """Minimal .env parser: KEY=VALUE lines, optional quotes, '# comments' (whole-line or
+    after whitespace). No dependency needed."""
+    out = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        val = re.split(r"\s+#", val.strip(), maxsplit=1)[0].strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        out[key.strip()] = val
+    return out
+
+
+def _load_dotenv():
+    """Load <project>/.env into the environment (real environment variables win)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for k, v in parse_dotenv(f.read()).items():
+                if v != "":
+                    os.environ.setdefault(k, v)
+    except OSError:
+        pass
+
+
+_load_dotenv()
 
 # --- Section 0 constants ---
 TODAY = date(2026, 7, 15)                      # all date checks use this, not the clock
@@ -8,8 +40,9 @@ DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), ".
 ADDRESS_PROOF_MAX_AGE_DAYS = 90                # reject proofs older than this before TODAY
 
 # --- LLM (Advisor) ---
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-5-5")
+LLM_API_KEY = (os.environ.get("LLM_API_KEY") or os.environ.get("GEMINI_API_KEY")
+               or os.environ.get("GOOGLE_API_KEY") or "")
+LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.5-flash")   # Google Gemini
 USE_LLM = bool(LLM_API_KEY)                    # if False, advisor uses rules-only fallback
 
 # --- Section 14C thresholds ---

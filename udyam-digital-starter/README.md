@@ -10,7 +10,7 @@ business case. Fictional brand "Accel Business"; **all data is synthetic**.
 frontend (React + Vite + Tailwind)  --/api-->  backend (FastAPI)  -->  PostgreSQL (orders, consent)
                                                    |
                           in-memory: catalogue + GSTIN/Udyam registries + leads (pandas)
-                          OCR: Tesseract + OpenCV     Advisor: rules engine (+ Claude if a key is set)
+                          OCR: Tesseract + OpenCV     Advisor: rules engine (+ Gemini if a key is set)
 ```
 
 ## Prerequisites
@@ -43,7 +43,9 @@ pip install -r requirements.txt
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/udyam
 uvicorn app:app --reload                                # http://localhost:8000  (docs at /docs)
 ```
-Optional LLM advisor: `export LLM_API_KEY=sk-...`. Without a key the advisor runs its
+Settings are read from a `.env` file in the project root (copy `.env.example` to `.env`; real environment
+variables take precedence). Optional LLM advisor (Google Gemini): set `LLM_API_KEY` to your Gemini API key
+(`LLM_MODEL` defaults to `gemini-2.5-flash`). Without a key the advisor runs its
 rules-only engine, so the demo never depends on an external API. Either way, every
 bundle is re-validated against the eligibility rules on the server.
 
