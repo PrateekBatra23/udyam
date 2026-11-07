@@ -44,6 +44,10 @@ def _startup():
     get_store()   # load reference CSVs into memory once
     db.init_db()  # create Postgres tables for orders + consent if absent
     log.info("retention purge: %s", privacy.purge_expired())
+    if config.USE_LLM:      # warm the Gemini connection in the background; never blocks startup
+        import threading
+        from advisor import llm
+        threading.Thread(target=lambda: log.info("llm warm-up: %s s", llm.warm_up()), daemon=True).start()
 
 
 # ---------- models ----------

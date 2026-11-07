@@ -70,7 +70,10 @@ def eligible_products(profile: Profile) -> list[str]:
 
 
 def _requires_one_of(pid: str) -> list[str]:
-    raw = get_store().product(pid).get("requires_one_of")
+    p = get_store().product(pid)
+    if p is None:                    # unknown product id (e.g. invented by a model): no dependencies
+        return []
+    raw = p.get("requires_one_of")
     if not raw or str(raw) == "nan":
         return []
     return [x for x in str(raw).split("|") if x.strip()]

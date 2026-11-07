@@ -6,6 +6,26 @@ import { BundleCard, Empty, Field, rupee } from "../components/ui.jsx";
 // O2 - asks only 2-3 questions (sites, current spend, top priority); GSTIN autofill
 // already supplied everything else. Returns Value + Lite bundles and explains any
 // refusal in plain language.
+// Shown while the advisor works so a 5-10 s wait never looks frozen.
+function Thinking({ t }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSecs((x) => x + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="card flex items-center gap-3" role="status" aria-live="polite" data-testid="thinking">
+      <span className="w-6 h-6 rounded-full border-2 border-accel/30 border-t-accel animate-spin shrink-0" aria-hidden="true" />
+      <div>
+        <div className="text-sm font-medium">{t("thinking_title")}</div>
+        <div className="text-xs text-slate-500">
+          {secs < 12 ? t("thinking_body") : t("thinking_slow")} · {t("thinking_secs", { n: secs })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Advisor() {
   const { t, lang, journey, setJourney, goto } = useJourney();
   const p = journey.profile;
@@ -70,7 +90,9 @@ export default function Advisor() {
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
       </div>
 
-      {rec && (
+      {busy && <Thinking t={t} />}
+
+      {rec && !busy && (
         <>
           {rec.refusals?.map((r) => (
             <div key={r.product_id} className="card border-amber-200 bg-amber-50" role="status">

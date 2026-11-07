@@ -45,7 +45,7 @@ uvicorn app:app --reload                                # http://localhost:8000 
 ```
 Settings are read from a `.env` file in the project root (copy `.env.example` to `.env`; real environment
 variables take precedence). Optional LLM advisor (Google Gemini): set `LLM_API_KEY` to your Gemini API key
-(`LLM_MODEL` defaults to `gemini-3.8-flash`). Without a key the advisor runs its
+(`LLM_MODEL` defaults to `gemini-3.8-flash`; `LLM_THINKING_LEVEL` defaults to `LOW`, which answers in about 3 seconds). Without a key the advisor runs its
 rules-only engine, so the demo never depends on an external API. Either way, every
 bundle is re-validated against the eligibility rules on the server.
 

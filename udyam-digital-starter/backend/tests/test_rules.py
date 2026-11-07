@@ -122,3 +122,10 @@ def test_dotenv_parser_handles_comments_quotes_and_blanks():
         "EMPTY=\nDATABASE_URL=postgresql://u:p@h:5432/db\n\nbad line\n")
     assert env == {"LLM_API_KEY": "abc123", "LLM_MODEL": "gemini-2.5-flash", "EMPTY": "",
                    "DATABASE_URL": "postgresql://u:p@h:5432/db"}
+
+
+def test_unknown_product_ids_are_stripped_not_crashed_on():
+    clean, removed = strip_ineligible(P(), ["P01", "P99", "NOPE"])
+    assert clean == ["P01"] and len(removed) == 2
+    ok, reasons = validate_bundle(P(), ["P99"])
+    assert not ok and "unknown product" in reasons[0]

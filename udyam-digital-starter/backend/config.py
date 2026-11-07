@@ -43,6 +43,13 @@ ADDRESS_PROOF_MAX_AGE_DAYS = 90                # reject proofs older than this b
 LLM_API_KEY = (os.environ.get("LLM_API_KEY") or os.environ.get("GEMINI_API_KEY")
                or os.environ.get("GOOGLE_API_KEY") or "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-3.8-flash")   # Google Gemini
+# Single-call mode (default): everything the model needs is in the first message, so it answers in
+# ONE round trip. Set LLM_USE_TOOLS=1 for the multi-round tool-calling loop instead.
+LLM_USE_TOOLS = os.environ.get("LLM_USE_TOOLS", "0").lower() in ("1", "true", "yes")
+# Thinking effort. Measured on gemini-3.8-flash: default ~17-32 s, MEDIUM ~12 s, LOW ~3 s with the same
+# valid, complete bundles - the answer is a tailoring of server-computed options, so LOW is enough.
+# MINIMAL | LOW | MEDIUM | HIGH, or empty for the model default.
+LLM_THINKING_LEVEL = os.environ.get("LLM_THINKING_LEVEL", "LOW").upper()
 USE_LLM = bool(LLM_API_KEY)                    # if False, advisor uses rules-only fallback
 
 # --- Section 14C thresholds ---

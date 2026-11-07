@@ -23,3 +23,20 @@ def db_available() -> bool:
 
 
 needs_db = pytest.mark.skipif(not db_available(), reason="PostgreSQL not running")
+
+
+@pytest.fixture(autouse=True)
+def never_call_the_real_llm(monkeypatch):
+    """The developer's .env may hold a real Gemini key. Tests must never use it: they either run
+    rules-only or inject a fake client explicitly (`client=` / the fakes in test_advisor_llm.py)."""
+    import config
+    monkeypatch.setattr(config, "USE_LLM", False)
+    monkeypatch.setattr(config, "LLM_API_KEY", "")
+    try:
+        from advisor import llm
+
+        def blocked():
+            raise AssertionError("a test tried to create a real LLM client")
+        monkeypatch.setattr(llm, "make_client", blocked)
+    except ImportError:
+        pass
