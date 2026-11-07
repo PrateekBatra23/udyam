@@ -145,7 +145,7 @@ function ResultCard({ r, t, onTrack }) {
   return (
     <div className="card">
       <div className="flex items-center justify-between">
-        <span className="font-semibold">{r.applicant}</span>
+        <span className="font-semibold">{r.applicant === "UPLOAD" ? t("your_documents") : r.applicant}</span>
         <span className={`pill ${STYLE[r.decision]}`}>{t("decision_" + r.decision)}</span>
       </div>
       <div className="text-xs text-slate-400">mean OCR confidence {r.mean_confidence}
@@ -168,8 +168,9 @@ function ResultCard({ r, t, onTrack }) {
           <div key={doc} className="mt-2">
             <div className="font-medium">{doc.replaceAll("_", " ")} <span className="text-slate-400">(conf {d.confidence})</span></div>
             {Object.entries(d.fields).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span>
-                <span>{v.value} <span className="text-slate-400">{Math.round(v.conf)}%</span></span></div>))}
+              <div key={k} className="flex justify-between gap-3 text-slate-600">
+                <span className="shrink-0">{k.replaceAll("_", " ")}</span>
+                <span className="text-right break-words min-w-0">{v.value} <span className="text-slate-400">{Math.round(v.conf)}%</span></span></div>))}
           </div>))}
       </details>
       {r.decision === "APPROVE" && <button className="btn w-full mt-4" onClick={onTrack}>{t("nav_tracker")} →</button>}

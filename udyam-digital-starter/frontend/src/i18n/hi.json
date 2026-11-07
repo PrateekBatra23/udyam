@@ -86,6 +86,7 @@
   "kyc_slot_udyam_certificate": "उद्यम प्रमाणपत्र",
   "kyc_slot_signatory_id": "हस्ताक्षरकर्ता ID",
   "kyc_slot_address_proof": "पते का प्रमाण (पिछले 90 दिन का बिल)",
+  "your_documents": "आपके दस्तावेज़",
   "verify": "दस्तावेज़ सत्यापित करें",
   "verifying": "दस्तावेज़ पढ़े जा रहे हैं...",
   "kyc_demo": "या नमूना आवेदक आज़माएँ",

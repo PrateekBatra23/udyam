@@ -86,6 +86,7 @@
   "kyc_slot_udyam_certificate": "Udyam certificate",
   "kyc_slot_signatory_id": "Signatory ID",
   "kyc_slot_address_proof": "Address proof (utility bill, last 90 days)",
+  "your_documents": "Your documents",
   "verify": "Verify documents",
   "verifying": "Reading your documents...",
   "kyc_demo": "Or try a specimen applicant",
