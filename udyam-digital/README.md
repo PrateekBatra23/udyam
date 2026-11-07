@@ -1,10 +1,62 @@
 # Project Udyam Digital - prototype
 
 A digital-first, phone-first, bilingual (English / Hindi) journey that takes a small
-business from "who are you?" to an activated bundle in one sitting: GSTIN-first
-onboarding, an advisor that recommends a bundle, a transparent quote, document OCR
-KYC under DPDP-style consent, and an order tracker. A back-office dashboard shows the
-business case. Fictional brand "Accel Business"; **all data is synthetic**.
+business from "who are you?" to an activated bundle in one sitting. Fictional brand
+"Accel Business"; **all data is synthetic**.
+
+## What it does
+
+Accel Business sells telecom and cloud to large accounts but barely reaches India's
+60M+ MSMEs, where the old field-sales journey is too slow and too manual to be worth it.
+Udyam Digital is a self-serve journey a shop owner can finish on their phone in one sitting:
+
+1. **Onboarding** - they enter their GSTIN once; the business name, address, segment and
+   team size autofill from the registries.
+2. **Advisor** - a few plain questions produce a recommended bundle (a *Value* and a *Lite*
+   option) with reasons, in English or Hindi.
+3. **Quote** - a transparent price with add-on toggles, dependencies and the saving vs today.
+4. **Smart KYC** - documents are read by OCR and checked against the registries, straight
+   through where they pass.
+5. **Tracker** - a self-serve view of activation stages, so there are no chase calls.
+
+A back-office dashboard turns the same data into the business case: funnel, propensity bands,
+churn / NPS and the metrics that move.
+
+**What makes it hard to copy**
+
+- **GSTIN-first onboarding** - one identifier fills the profile and infers the segment, so the owner barely types.
+- **Guardrailed advisor** - the LLM suggests and explains, but the rules engine decides; every bundle is re-validated server-side, so it cannot mis-sell.
+- **Straight-through KYC** - OCR plus registry and 3-way checks; unreadable or mismatched documents go to review, never a false reject.
+- **Propensity routing** - a score decides who self-serves end to end and who gets a warm, human nudge.
+- **DPDP by design** - consent before any KYC, masked identifiers, withdrawal, and a 180-day purge.
+
+## Screens
+
+A phone-first journey from "who are you?" to an activated bundle, plus a back-office dashboard for the business case.
+
+<table>
+  <tr>
+    <td align="center" width="33%" valign="top"><img src="assets/images/00_onboarding_autofill.png" width="240"><br><sub><b>Onboarding</b><br>Enter the GSTIN once and the business name, address, segment and team size autofill from the registries.</sub></td>
+    <td align="center" width="33%" valign="top"><img src="assets/images/01_advisor.png" width="240"><br><sub><b>Advisor</b><br>A few plain questions produce a Value and a Lite bundle with reasons; it only ever recommends eligible options.</sub></td>
+    <td align="center" width="33%" valign="top"><img src="assets/images/02_quote.png" width="240"><br><sub><b>Quote</b><br>Live add-on toggles and dependencies, with the monthly total and the saving against what they pay today.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%" valign="top"><img src="assets/images/03_smart_kyc.png" width="240"><br><sub><b>Smart KYC</b><br>Documents are read by OCR and checked against the registries; clean ones pass straight through, edge cases go to review.</sub></td>
+    <td align="center" width="33%" valign="top"><img src="assets/images/04_tracker.png" width="240"><br><sub><b>Tracker</b><br>Activation stages with a date each and an expected go-live, so the owner never has to chase for status.</sub></td>
+    <td align="center" width="33%" valign="top"><img src="assets/images/05_consent_notice.png" width="240"><br><sub><b>Consent</b><br>A plain-language DPDP consent notice appears before any document is collected, and can be withdrawn later.</sub></td>
+  </tr>
+</table>
+
+### Back-office dashboard
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="assets/images/06_insights_top.png" width="260"><br><sub><b>Business case</b><br>Success metrics and funnel</sub></td>
+    <td align="center" width="50%"><img src="assets/images/06_insights_more.png" width="260"><br><sub><b>Lead routing</b><br>Propensity bands, then churn / NPS</sub></td>
+  </tr>
+</table>
+
+<sub>The success metrics against their baselines, the funnel, lead routing by propensity band, and churn / NPS: the business case, live from the data.</sub>
 
 ## Architecture
 
@@ -15,34 +67,6 @@ the eligible product set and bundle prices, and the advisor is handed those pref
 LLM makes a single call (or is skipped for the instant rules fallback). Whatever the model
 returns is re-validated server-side, so an ineligible bundle can never reach the client.
 Reference data is loaded in memory at startup; only orders and consent are written, to PostgreSQL.
-
-## Screens
-
-A phone-first journey from "who are you?" to an activated bundle, plus a back-office dashboard for the business case.
-
-<table>
-  <tr>
-    <td align="center" width="33%"><img src="assets/images/00_onboarding_autofill.png" width="240"><br><sub><b>Onboarding</b><br>GSTIN-first autofill</sub></td>
-    <td align="center" width="33%"><img src="assets/images/01_advisor.png" width="240"><br><sub><b>Advisor</b><br>Guardrailed bundle advice</sub></td>
-    <td align="center" width="33%"><img src="assets/images/02_quote.png" width="240"><br><sub><b>Quote</b><br>Transparent price &amp; saving</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="33%"><img src="assets/images/03_smart_kyc.png" width="240"><br><sub><b>Smart KYC</b><br>OCR + registry, straight-through</sub></td>
-    <td align="center" width="33%"><img src="assets/images/04_tracker.png" width="240"><br><sub><b>Tracker</b><br>Self-serve order status</sub></td>
-    <td align="center" width="33%"><img src="assets/images/05_consent_notice.png" width="240"><br><sub><b>Consent</b><br>DPDP notice before any KYC</sub></td>
-  </tr>
-</table>
-
-### Back-office dashboard
-
-<table>
-  <tr>
-    <td align="center" width="50%"><img src="assets/images/06_insights_top.png" width="260"><br><sub><b>Business case</b><br>Success metrics and funnel</sub></td>
-    <td align="center" width="50%"><img src="assets/images/06_insights_more.png" width="260"><br><sub><b>Where it is won or lost</b><br>Activation cuts, churn / NPS</sub></td>
-  </tr>
-</table>
-
-<sub>The success metrics against their baselines, the funnel, activation by GSTIN / segment / lead source, and churn / NPS: the business case, live from the data.</sub>
 
 ## Prerequisites
 - Python 3.10+ and Node 18+
