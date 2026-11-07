@@ -35,9 +35,14 @@ A phone-first journey from "who are you?" to an activated bundle, plus a back-of
 
 ### Back-office dashboard
 
-<img src="assets/images/06_insights_full.png" width="820">
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="assets/images/06_insights_top.png" width="260"><br><sub><b>Business case</b><br>Success metrics and funnel</sub></td>
+    <td align="center" width="50%"><img src="assets/images/06_insights_more.png" width="260"><br><sub><b>Where it is won or lost</b><br>Activation cuts, churn / NPS</sub></td>
+  </tr>
+</table>
 
-<sub>The five success metrics against their baselines, funnel, propensity bands, and churn / NPS: the business case, live from the data.</sub>
+<sub>The success metrics against their baselines, the funnel, activation by GSTIN / segment / lead source, and churn / NPS: the business case, live from the data.</sub>
 
 ## Prerequisites
 - Python 3.10+ and Node 18+
