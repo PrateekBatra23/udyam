@@ -6,12 +6,38 @@ onboarding, an advisor that recommends a bundle, a transparent quote, document O
 KYC under DPDP-style consent, and an order tracker. A back-office dashboard shows the
 business case. Fictional brand "Accel Business"; **all data is synthetic**.
 
-```
-frontend (React + Vite + Tailwind)  --/api-->  backend (FastAPI)  -->  PostgreSQL (orders, consent)
-                                                   |
-                          in-memory: catalogue + GSTIN/Udyam registries + leads (pandas)
-                          OCR: Tesseract + OpenCV     Advisor: rules engine (+ Gemini if a key is set)
-```
+## Architecture
+
+![Udyam Digital architecture: a React client calls the FastAPI backend over JSON/REST; the rules engine owns eligibility, pricing, identifiers and KYC, the advisor (Gemini + rules fallback) is re-validated server-side, and OCR and propensity run alongside; reference CSVs load in memory, orders and consent persist in PostgreSQL, and Gemini is optional](assets/images/architecture.webp)
+
+The React client calls FastAPI over JSON. The rules engine is the authority: it computes
+the eligible product set and bundle prices, and the advisor is handed those prefilled so the
+LLM makes a single call (or is skipped for the instant rules fallback). Whatever the model
+returns is re-validated server-side, so an ineligible bundle can never reach the client.
+Reference data is loaded in memory at startup; only orders and consent are written, to PostgreSQL.
+
+## Screens
+
+A phone-first journey from "who are you?" to an activated bundle, plus a back-office dashboard for the business case.
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="assets/images/00_onboarding_autofill.png" width="240"><br><sub><b>Onboarding</b><br>GSTIN-first autofill</sub></td>
+    <td align="center" width="33%"><img src="assets/images/01_advisor.png" width="240"><br><sub><b>Advisor</b><br>Guardrailed bundle advice</sub></td>
+    <td align="center" width="33%"><img src="assets/images/02_quote.png" width="240"><br><sub><b>Quote</b><br>Transparent price &amp; saving</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><img src="assets/images/03_smart_kyc.png" width="240"><br><sub><b>Smart KYC</b><br>OCR + registry, straight-through</sub></td>
+    <td align="center" width="33%"><img src="assets/images/04_tracker.png" width="240"><br><sub><b>Tracker</b><br>Self-serve order status</sub></td>
+    <td align="center" width="33%"><img src="assets/images/05_consent_notice.png" width="240"><br><sub><b>Consent</b><br>DPDP notice before any KYC</sub></td>
+  </tr>
+</table>
+
+### Back-office dashboard
+
+<img src="assets/images/06_insights_full.png" width="820">
+
+<sub>The five success metrics against their baselines, funnel, propensity bands, and churn / NPS: the business case, live from the data.</sub>
 
 ## Prerequisites
 - Python 3.10+ and Node 18+
@@ -101,6 +127,8 @@ backend/   app.py (API)  rules/ (eligibility, quote, identifiers)  advisor/  kyc
 frontend/  src/screens (6 screens)  src/components  src/i18n (en, hi)  src/lib  src/api
 notebooks/ propensity model + churn/NPS analysis (.py and .ipynb)
 data/      synthetic data pack (git-ignored)      models/  trained model (git-ignored)
+assets/    images/ (architecture diagram + screenshots used in this README)
+docs/      local-only drafts (git-ignored)
 ```
 
 ## Configuration
