@@ -8,3 +8,8 @@ models/*.pkl
 # the synthetic data pack (add your own copy locally)
 data/*.csv
 data/kyc_documents/
+
+# dev-only notes
+DEV_NOTES.md
+.claude/
+docs/
